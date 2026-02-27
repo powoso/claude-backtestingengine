@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtesting Engine</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #12121f;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 20px 32px;
+            border-bottom: 1px solid #2a2a4a;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .header span {
+            font-size: 13px;
+            color: #888;
+            margin-left: auto;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .controls {
+            background: #1a1a2e;
+            border-radius: 12px;
+            padding: 24px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+            border: 1px solid #2a2a4a;
+        }
+        .field label {
+            display: block;
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .field input, .field select {
+            width: 100%;
+            padding: 10px 12px;
+            background: #12121f;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .field input:focus, .field select:focus {
+            border-color: #2196F3;
+        }
+        .btn-run {
+            align-self: end;
+            padding: 10px 28px;
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-run:hover { opacity: 0.9; }
+        .btn-run:disabled { opacity: 0.5; cursor: wait; }
+
+        /* Strategy-specific params */
+        .params-row {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .params-row .field { min-width: 140px; }
+
+        /* Metrics cards */
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .card {
+            background: #1a1a2e;
+            border-radius: 10px;
+            padding: 18px;
+            border: 1px solid #2a2a4a;
+        }
+        .card .label { font-size: 12px; color: #888; text-transform: uppercase; }
+        .card .value {
+            font-size: 26px;
+            font-weight: 700;
+            margin-top: 6px;
+        }
+        .green { color: #4CAF50; }
+        .red   { color: #F44336; }
+
+        /* Chart */
+        .chart-box {
+            background: #1e1e2f;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 24px;
+            border: 1px solid #2a2a4a;
+        }
+
+        /* Trade log */
+        .trade-log {
+            background: #1a1a2e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #2a2a4a;
+        }
+        .trade-log h3 { margin-bottom: 14px; color: #fff; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 2px solid #333;
+            color: #888;
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+        td {
+            padding: 9px 12px;
+            border-bottom: 1px solid #222;
+        }
+        tr:hover td { background: #222238; }
+
+        .spinner {
+            display: none;
+            width: 20px; height: 20px;
+            border: 3px solid #555;
+            border-top-color: #2196F3;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-msg {
+            background: #3e1a1a;
+            border: 1px solid #F44336;
+            color: #F44336;
+            padding: 14px 18px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Backtesting Engine</h1>
+        <span>Powered by Yahoo Finance</span>
+    </div>
+
+    <div class="container">
+        <!-- Controls -->
+        <form id="bt-form" class="controls" onsubmit="return false;">
+            <div class="field">
+                <label>Ticker</label>
+                <input id="ticker" value="AAPL" placeholder="e.g. AAPL" />
+            </div>
+            <div class="field">
+                <label>Start Date</label>
+                <input id="start" type="date" value="2020-01-01" />
+            </div>
+            <div class="field">
+                <label>End Date</label>
+                <input id="end" type="date" value="2024-01-01" />
+            </div>
+            <div class="field">
+                <label>Strategy</label>
+                <select id="strategy" onchange="renderParams()">
+                    {% for key, label in strategies.items() %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label>Capital ($)</label>
+                <input id="capital" type="number" value="100000" min="1000" step="1000" />
+            </div>
+            <div class="field" style="display:flex;align-items:end;gap:8px;">
+                <button class="btn-run" onclick="runBacktest()">Run Backtest</button>
+                <div class="spinner" id="spinner"></div>
+            </div>
+            <div class="params-row" id="params-row"></div>
+        </form>
+
+        <div class="error-msg" id="error-msg"></div>
+
+        <!-- Results -->
+        <div id="results" class="hidden">
+            <div class="metrics" id="metrics"></div>
+            <div class="chart-box"><div id="chart"></div></div>
+            <div class="trade-log">
+                <h3>Trade Log</h3>
+                <div style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Entry Date</th><th>Exit Date</th><th>Direction</th>
+                                <th>Entry Price</th><th>Exit Price</th><th>Shares</th>
+                                <th>PnL ($)</th><th>PnL %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trade-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const PARAM_DEFS = {
+        sma_crossover: [
+            { name: "fast", label: "Fast SMA", value: 20 },
+            { name: "slow", label: "Slow SMA", value: 50 },
+        ],
+        ema_crossover: [
+            { name: "fast", label: "Fast EMA", value: 12 },
+            { name: "slow", label: "Slow EMA", value: 26 },
+        ],
+        rsi: [
+            { name: "period", label: "Period", value: 14 },
+            { name: "oversold", label: "Oversold", value: 30 },
+            { name: "overbought", label: "Overbought", value: 70 },
+        ],
+        vwap_deviation: [
+            { name: "buy_dev", label: "Buy Dev", value: -0.02 },
+            { name: "sell_dev", label: "Sell Dev", value: 0.02 },
+        ],
+    };
+
+    function renderParams() {
+        const key = document.getElementById("strategy").value;
+        const row = document.getElementById("params-row");
+        const defs = PARAM_DEFS[key] || [];
+        row.innerHTML = defs.map(p =>
+            `<div class="field">
+                <label>${p.label}</label>
+                <input class="strat-param" data-name="${p.name}" type="number" step="any" value="${p.value}"/>
+            </div>`
+        ).join("");
+    }
+    renderParams();
+
+    async function runBacktest() {
+        const btn = document.querySelector(".btn-run");
+        const spinner = document.getElementById("spinner");
+        const errorEl = document.getElementById("error-msg");
+        errorEl.style.display = "none";
+        btn.disabled = true;
+        spinner.style.display = "inline-block";
+
+        const params = {};
+        document.querySelectorAll(".strat-param").forEach(el => {
+            params[el.dataset.name] = el.value;
+        });
+
+        const body = {
+            ticker: document.getElementById("ticker").value,
+            start: document.getElementById("start").value,
+            end: document.getElementById("end").value,
+            strategy: document.getElementById("strategy").value,
+            capital: document.getElementById("capital").value,
+            params,
+        };
+
+        try {
+            const resp = await fetch("/run", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || "Server error");
+            renderResults(data);
+        } catch (e) {
+            errorEl.textContent = e.message;
+            errorEl.style.display = "block";
+        } finally {
+            btn.disabled = false;
+            spinner.style.display = "none";
+        }
+    }
+
+    function renderResults(data) {
+        document.getElementById("results").classList.remove("hidden");
+
+        // Metrics
+        const s = data.summary;
+        const retColor = s.total_return_pct >= 0 ? "green" : "red";
+        const ddColor = "red";
+        document.getElementById("metrics").innerHTML = `
+            <div class="card"><div class="label">Final Equity</div><div class="value">$${s.final_equity.toLocaleString()}</div></div>
+            <div class="card"><div class="label">Total Return</div><div class="value ${retColor}">${s.total_return_pct.toFixed(2)}%</div></div>
+            <div class="card"><div class="label">Sharpe Ratio</div><div class="value">${s.sharpe_ratio.toFixed(2)}</div></div>
+            <div class="card"><div class="label">Max Drawdown</div><div class="value ${ddColor}">${s.max_drawdown_pct.toFixed(2)}%</div></div>
+            <div class="card"><div class="label">Win Rate</div><div class="value">${s.win_rate_pct.toFixed(1)}%</div></div>
+            <div class="card"><div class="label">Total Trades</div><div class="value">${s.total_trades}</div></div>
+        `;
+
+        // Chart
+        Plotly.newPlot("chart", data.chart.data, data.chart.layout, { responsive: true });
+
+        // Trade log
+        const tbody = document.getElementById("trade-body");
+        tbody.innerHTML = data.trades.map(t => {
+            const pnlClass = t.pnl >= 0 ? "green" : "red";
+            return `<tr>
+                <td>${t.entry_date}</td><td>${t.exit_date}</td><td>${t.direction}</td>
+                <td>$${t.entry_price.toFixed(2)}</td><td>$${t.exit_price.toFixed(2)}</td>
+                <td>${t.shares}</td>
+                <td class="${pnlClass}">$${t.pnl.toFixed(2)}</td>
+                <td class="${pnlClass}">${t.pnl_pct.toFixed(2)}%</td>
+            </tr>`;
+        }).join("");
+    }
+    </script>
+</body>
+</html>
